@@ -20,7 +20,7 @@ Repository ini berisi source code Tugas Akhir berjudul:
 ## ⚙️ Instalasi
 ```bash
 git clone https://github.com/username/aplikasi-apotekmufidafarma.git
-cd aplikasi-apotek
+cd aplikasi-apotekmufidafarma
 composer install
 npm install && npm run dev
 cp .env.example .env
