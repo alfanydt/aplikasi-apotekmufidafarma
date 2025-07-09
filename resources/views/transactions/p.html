@@ -1,0 +1,188 @@
+<x-app-layout>
+    {{-- Page Title --}}
+    <x-page-title>Add Transaction (POS)</x-page-title>
+
+    <div class="bg-white rounded-2 shadow-sm p-4 mb-5">
+        <form action="{{ route('transactions.store') }}" method="POST" id="posForm">
+            @csrf
+            <div class="row">
+                {{-- Left side: product selection, quantity, stock info --}}
+                <div class="col-lg-6">
+                    <div class="mb-3">
+                        <label class="form-label">Product <span class="text-danger">*</span></label>
+                        <select id="productSelect" class="form-select select2-single" autocomplete="off">
+                            <option selected disabled value="">- Select product -</option>
+                            @foreach ($products as $product)
+                            <option value="{{ $product->id }}"
+                                data-price="{{ $product->harga_satuan ?? $product->price }}"
+                                data-stock="{{ $product->stocks->first()->jumlah_obat ?? 0 }}">
+                                {{ $product->name }}
+                            </option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Quantity <span class="text-danger">*</span></label>
+                        <input type="number" id="productQty" class="form-control" min="1" value="1"
+                            autocomplete="off" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Stock Available</label>
+                        <input type="number" id="stockInfo" class="form-control" readonly />
+                    </div>
+
+                    <button type="button" id="addToCartBtn" class="btn btn-primary">Add to Cart</button>
+                </div>
+
+                {{-- Right side: cart info and payment --}}
+                <div class="col-lg-6">
+                    <h5>Cart</h5>
+                    <table class="table table-bordered" id="cartTable">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Unit Price</th>
+                                <th>Quantity</th>
+                                <th>Subtotal</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{-- Cart items will be added here dynamically --}}
+                        </tbody>
+                    </table>
+
+                    <div class="mb-3">
+                        <label class="form-label">Total Payment</label>
+                        <input type="text" id="totalPayment" name="total_payment" class="form-control" readonly />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Amount Paid <span class="text-danger">*</span></label>
+                        <input type="number" id="amountPaid" name="amount_paid" class="form-control" min="0"
+                            autocomplete="off" required />
+                    </div>
+
+                    {{-- Hidden input untuk mengirim data cart ke server --}}
+                    <input type="hidden" id="cartData" name="cart_data" />
+                </div>
+            </div>
+
+            <div class="pt-4 pb-2 mt-5 border-top">
+                <button type="submit" class="btn btn-success py-2 px-4">Complete Transaction</button>
+                <a href="{{ route('transactions.index') }}" class="btn btn-secondary py-2 px-3">Cancel</a>
+            </div>
+        </form>
+    </div>
+
+    {{-- JavaScript Section --}}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const productSelect = document.getElementById('productSelect');
+            const productQty = document.getElementById('productQty');
+            const stockInfo = document.getElementById('stockInfo');
+            const addToCartBtn = document.getElementById('addToCartBtn');
+            const cartTableBody = document.querySelector('#cartTable tbody');
+            const totalPaymentInput = document.getElementById('totalPayment');
+            const cartDataInput = document.getElementById('cartData');
+
+            let cart = [];
+
+            function updateStockInfo() {
+                const selectedOption = productSelect.options[productSelect.selectedIndex];
+                if (selectedOption && selectedOption.value !== "") {
+                    // Get jumlah_obat from the product's stocks relationship
+                    const jumlahObat = selectedOption.getAttribute('data-stock');
+                    stockInfo.value = jumlahObat;
+                    productQty.value = 1; // reset quantity to 1 on product change
+                } else {
+                    stockInfo.value = '';
+                    productQty.value = 1;
+                }
+            }
+
+            function formatCurrency(value) {
+                return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(value);
+            }
+
+            function updateCartTable() {
+                cartTableBody.innerHTML = '';
+                let total = 0;
+
+                cart.forEach((item, index) => {
+                    const subtotal = item.price * item.quantity;
+                    total += subtotal;
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.name}</td>
+                        <td>${formatCurrency(item.price)}</td>
+                        <td>${item.quantity}</td>
+                        <td>${formatCurrency(subtotal)}</td>
+                        <td><button type="button" class="btn btn-danger btn-sm remove-btn" data-index="${index}">Remove</button></td>
+                    `;
+                    cartTableBody.appendChild(row);
+                });
+
+                totalPaymentInput.value = formatCurrency(total);
+                cartDataInput.value = JSON.stringify(cart);
+            }
+
+            addToCartBtn.addEventListener('click', () => {
+                const productId = productSelect.value;
+                if (!productId) {
+                    alert('Please select a product.');
+                    return;
+                }
+
+                const productName = productSelect.options[productSelect.selectedIndex].text;
+                let productPrice = parseFloat(productSelect.options[productSelect.selectedIndex].getAttribute('data-price'));
+                if (isNaN(productPrice)) productPrice = 0;
+
+                const quantity = parseInt(productQty.value);
+                const stock = parseInt(stockInfo.value);
+
+                if (!quantity || quantity <= 0) {
+                    alert('Please enter a valid quantity.');
+                    return;
+                }
+                if (quantity > stock) {
+                    alert('Quantity exceeds available stock.');
+                    return;
+                }
+
+                // Check if product already in cart
+                const existingIndex = cart.findIndex(item => item.id === productId);
+                if (existingIndex !== -1) {
+                    if (cart[existingIndex].quantity + quantity > stock) {
+                        alert('Total quantity exceeds available stock.');
+                        return;
+                    }
+                    cart[existingIndex].quantity += quantity;
+                } else {
+                    cart.push({ id: productId, name: productName, price: productPrice, quantity: quantity });
+                }
+
+                updateCartTable();
+
+                // Reset selection
+                productSelect.value = '';
+                productQty.value = 1;
+                stockInfo.value = '';
+            });
+
+            cartTableBody.addEventListener('click', (e) => {
+                if (e.target.classList.contains('remove-btn')) {
+                    const index = e.target.getAttribute('data-index');
+                    cart.splice(index, 1);
+                    updateCartTable();
+                }
+            });
+
+            productSelect.addEventListener('change', updateStockInfo);
+            updateStockInfo();
+        });
+    </script>
+</x-app-layout>
